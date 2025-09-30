@@ -60,12 +60,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 'score_engine_file_path',
                 default_value=SCORE_ENGINE_PATH,
-                description='The absolute file path to the score trt engine'),
-
-            DeclareLaunchArgument(
-                'rt_detr_engine_file_path',
-                default_value='',
-                description='The absolute file path to the RT-DETR TensorRT engine file'),
+                description='The absolute file path to the score trt engine')
         ]
     
     # FoundationPose parameters
@@ -96,12 +91,38 @@ def generate_launch_description():
                 'score_output_binding_names': ['output1'],
             }],
             remappings=[
-                ('pose_estimation/depth_image', 'depth_image'),
-                ('pose_estimation/image', 'rgb/image_rect_color'),
-                ('pose_estimation/camera_info', 'rgb/camera_info'),
-                ('pose_estimation/segmentation', 'segmentation'),
-                ('pose_estimation/output', 'output')]
+                ('pose_estimation/depth_image', 'depth_image2'),
+                ('pose_estimation/image', 'rgb/image_rect_color2'),
+                ('pose_estimation/camera_info', 'rgb/camera_info2'),
+                ('pose_estimation/segmentation', 'segmentation2'),
+                ('pose_estimation/output', 'output2')]
         )
+    
+
+    input_width = 640
+    input_height = 480
+    input_to_RT_DETR_ratio = input_width / RT_DETR_MODEL_INPUT_SIZE
+    
+    # Create a binary segmentation mask from a Detection2DArray published by RT-DETR.
+    # The segmentation mask is of size
+    # int(IMAGE_WIDTH/input_to_RT_DETR_ratio) x int(IMAGE_HEIGHT/input_to_RT_DETR_ratio)
+    # detection2_d_array_filter = ComposableNode(
+    #         name='detection2_d_array_filter',
+    #         package='isaac_ros_foundationpose',
+    #         plugin='nvidia::isaac_ros::foundationpose::Detection2DArrayFilter',
+    #         remappings=[('detection2_d_array', 'detections_output')]
+    #     )
+    
+    # detection2_d_to_mask = ComposableNode(
+    #         name='detection2_d_to_mask',
+    #         package='isaac_ros_foundationpose',
+    #         plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
+    #         parameters=[{
+    #             'mask_width': int(input_width/input_to_RT_DETR_ratio),
+    #             'mask_height': int(input_height/input_to_RT_DETR_ratio)
+    #         }],
+    #         remappings=[('segmentation', 'rt_detr_segmentation')]
+    #     )
 
 
     foundationpose_container = ComposableNodeContainer(
@@ -110,6 +131,7 @@ def generate_launch_description():
         namespace='',
         executable='component_container_mt',
         composable_node_descriptions=[foundationpose_node],
+        # composable_node_descriptions=[foundationpose_node, detection2_d_array_filter, detection2_d_to_mask],
         output='screen'
     )
 
