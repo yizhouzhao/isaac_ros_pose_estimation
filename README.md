@@ -1,12 +1,117 @@
-## build 
+## Customized FoundationPose Pipeline 
 
+<img src="./tools/rgb.png" width=640 height=480>
+
+### Build isaac_ros_foundation_pose package
+`Docker start`(IMPORTANT, reuse when starting another terminal):
+```bash
+cd ${ISAAC_ROS_WS}/src/isaac_ros_common && \
+   ./scripts/run_dev.sh
+```
+
+Clone this repo
+```bash
+cd ${ISAAC_ROS_WS}/src && \
+   git clone https://github.com/yizhouzhao/isaac_ros_pose_estimation
+```
+
+[Inside Docker] Install dependencies
+```bash
+sudo apt-get update
+sudo apt-get install -y ros-humble-isaac-ros-examples
+rosdep update && rosdep install --from-paths ${ISAAC_ROS_WS}/src/isaac_ros_pose_estimation/isaac_ros_foundationpose --ignore-src -y
+```
+
+[Inside Docker] Build package:
 ```bash
 cd ${ISAAC_ROS_WS}/ &&    colcon build --symlink-install --packages-up-to isaac_ros_foundationpose --base-paths ${ISAAC_ROS_WS}/src/isaac_ros_pose_estimation/isaac_ros_foundationpose
 
 source install/setup.bash
 ```
 
--------------------------------------------
+### Download asset, pretrained network and compile tensorrt plan:
+
+[Inside Docker] Download from ngc
+```bash
+sudo apt-get install -y curl jq tar
+
+NGC_ORG="nvidia"
+NGC_TEAM="isaac"
+PACKAGE_NAME="isaac_ros_foundationpose"
+NGC_RESOURCE="isaac_ros_foundationpose_assets"
+NGC_FILENAME="quickstart.tar.gz"
+MAJOR_VERSION=3
+MINOR_VERSION=2
+VERSION_REQ_URL="https://catalog.ngc.nvidia.com/api/resources/versions?orgName=$NGC_ORG&teamName=$NGC_TEAM&name=$NGC_RESOURCE&isPublic=true&pageNumber=0&pageSize=100&sortOrder=CREATED_DATE_DESC"
+AVAILABLE_VERSIONS=$(curl -s \
+    -H "Accept: application/json" "$VERSION_REQ_URL")
+LATEST_VERSION_ID=$(echo $AVAILABLE_VERSIONS | jq -r "
+    .recipeVersions[]
+    | .versionId as \$v
+    | \$v | select(test(\"^\\\\d+\\\\.\\\\d+\\\\.\\\\d+$\"))
+    | split(\".\") | {major: .[0]|tonumber, minor: .[1]|tonumber, patch: .[2]|tonumber}
+    | select(.major == $MAJOR_VERSION and .minor <= $MINOR_VERSION)
+    | \$v
+    " | sort -V | tail -n 1
+)
+if [ -z "$LATEST_VERSION_ID" ]; then
+    echo "No corresponding version found for Isaac ROS $MAJOR_VERSION.$MINOR_VERSION"
+    echo "Found versions:"
+    echo $AVAILABLE_VERSIONS | jq -r '.recipeVersions[].versionId'
+else
+    mkdir -p ${ISAAC_ROS_WS}/isaac_ros_assets && \
+    FILE_REQ_URL="https://api.ngc.nvidia.com/v2/resources/$NGC_ORG/$NGC_TEAM/$NGC_RESOURCE/\
+versions/$LATEST_VERSION_ID/files/$NGC_FILENAME" && \
+    curl -LO --request GET "${FILE_REQ_URL}" && \
+    tar -xf ${NGC_FILENAME} -C ${ISAAC_ROS_WS}/isaac_ros_assets && \
+    rm ${NGC_FILENAME}
+fi
+
+mkdir -p ${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose && \
+   cd ${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose && \
+   wget 'https://api.ngc.nvidia.com/v2/models/nvidia/isaac/foundationpose/versions/1.0.0_onnx/files/refine_model.onnx' -O refine_model.onnx && \
+   wget 'https://api.ngc.nvidia.com/v2/models/nvidia/isaac/foundationpose/versions/1.0.0_onnx/files/score_model.onnx' -O score_model.onnxsrc/isaac_ros_pose_estimation/isaac_ros_foundationpose/rviz
+
+```
+
+[Inside Docker] Compile tensorrt engine 
+```bash
+/usr/src/tensorrt/bin/trtexec --onnx=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_model.onnx --saveEngine=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan --minShapes=input1:1x160x160x6,input2:1x160x160x6 --optShapes=input1:1x160x160x6,input2:1x160x160x6 --maxShapes=input1:42x160x160x6,input2:42x160x160x6
+
+/usr/src/tensorrt/bin/trtexec --onnx=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_model.onnx --saveEngine=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan --minShapes=input1:1x160x160x6,input2:1x160x160x6 --optShapes=input1:1x160x160x6,input2:1x160x160x6 --maxShapes=input1:252x160x160x6,input2:252x160x160x6
+```
+
+### Run
+[Inside Docker] publishing test data (catched `mac_and_cheese` published from isaac-sim)
+```bash
+cd ${ISAAC_ROS_WS}/src/isaac_ros_pose_estimation/tools
+python publish_camera_info.py
+```
+
+[Inside Docker] Start FoundationPose node by specifying:
+- model (.obj)
+- texture (.png)
+- score_engine_file_path (.plan) compiled previously
+- refine_engine_file_path (.plan) compiled previously
+
+```bash
+ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose_only.launch.py mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mac_and_cheese_0_1/Mac_and_cheese_0_1.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mac_and_cheese_0_1/materials/textures/baked_mesh_tex0.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan 
+```
+
+[Inside Docker] Visualize your results
+```
+cd ${ISAAC_ROS_WS}/src/isaac_ros_pose_estimation/isaac_ros_foundationpose/rviz
+rviz2 -d foundationpose2.rviz
+```
+
+And you should see
+
+<img src="./tools/viz.png" width=640 height=480>
+
+
+
+
+------------------------------------------- Note ---------------------------------------
 
 ros2 launch isaac_ros_examples isaac_ros_examples.launch.py launch_fragments:=foundationpose interface_specs_file:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/quickstart_interface_specs.json mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/textured_simple.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/texture_map.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan rt_detr_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/synthetica_detr/sdetr_grasp.plan
 
@@ -16,9 +121,13 @@ ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose.launch.py refine_e
 
 ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose_custom.launch.py mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/textured_simple.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/texture_map.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan rt_detr_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/synthetica_detr/sdetr_grasp.plan
 
-ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose_only.launch.py mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/textured_simple.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/texture_map.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan rt_detr_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/synthetica_detr/sdetr_grasp.plan
+### Mustard
+ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose_only.launch.py mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/textured_simple.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mustard/texture_map.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan 
 
------------------------------------------
+### Mac and Cheese
+ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose_only.launch.py mesh_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mac_and_cheese_0_1/Mac_and_cheese_0_1.obj texture_path:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_foundationpose/Mac_and_cheese_0_1/materials/textures/baked_mesh_tex0.png score_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/score_trt_engine.plan refine_engine_file_path:=${ISAAC_ROS_WS}/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan 
+
+--------------------------------------------------
  
 # Isaac ROS Pose Estimation
 

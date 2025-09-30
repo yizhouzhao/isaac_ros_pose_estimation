@@ -11,9 +11,9 @@ class ImageSaver(Node):
         self.bridge = CvBridge()
 
         # Subscribers
-        self.depth_sub = self.create_subscription(Image, '/depth_image', self.depth_callback, 10)
-        self.rgb_sub   = self.create_subscription(Image, '/rgb/image_rect_color', self.rgb_callback, 10)
-        self.seg_sub   = self.create_subscription(Image, '/segmentation', self.seg_callback, 10)
+        self.depth_sub = self.create_subscription(Image, '/depth', self.depth_callback, 10)
+        self.rgb_sub   = self.create_subscription(Image, '/rgb', self.rgb_callback, 10)
+        # self.seg_sub   = self.create_subscription(Image, '/segmentation', self.seg_callback, 10)
 
         self.depth_saved = False
         self.rgb_saved = False

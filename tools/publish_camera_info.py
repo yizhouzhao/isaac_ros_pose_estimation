@@ -21,6 +21,9 @@ class TestCameraPublisher(Node):
         depth_mm = cv2.imread('depth.png', cv2.IMREAD_UNCHANGED)   # uint16 in mm
         self.seg_image = cv2.imread('segmentation.png', cv2.IMREAD_GRAYSCALE)  # 8-bit
 
+        # load camera info
+        # TODO: be more specific about camera info
+        self.load_camera_info2()
 
         if self.rgb_image is None:
             self.get_logger().error("Failed to load rgb.png")
@@ -31,8 +34,13 @@ class TestCameraPublisher(Node):
 
         # Convert depth from mm → meters float32
         self.depth_image = (depth_mm.astype(np.float32) / 1000.0)
-        
 
+        # Timer
+        self.timer_period = 1.0 / frame_rate
+        self.timer = self.create_timer(self.timer_period, self.timer_callback)
+        self.counter = 0
+
+    def load_camera_info(self):
         # Camera info (fixed)
         self.camera_info_msg = CameraInfo()
         self.camera_info_msg.header.frame_id = "tf_camera"
@@ -63,10 +71,36 @@ class TestCameraPublisher(Node):
         self.camera_info_msg.roi.width = 0
         self.camera_info_msg.roi.do_rectify = False
 
-        # Timer
-        self.timer_period = 1.0 / frame_rate
-        self.timer = self.create_timer(self.timer_period, self.timer_callback)
-        self.counter = 0
+    def load_camera_info2(self):
+        # Camera info (fixed)
+        self.camera_info_msg = CameraInfo()
+        self.camera_info_msg.header.frame_id = "tf_camera"
+        self.camera_info_msg.height = 480
+        self.camera_info_msg.width = 640
+        self.camera_info_msg.distortion_model = "plumb_bob"
+        self.camera_info_msg.d = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.camera_info_msg.k = [
+            319.2705186497959, 0.0, 320.0,
+            0.0, 383.1246477530969, 240.0,
+            0.0, 0.0, 1.0
+        ]
+        self.camera_info_msg.r = [
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        ]
+        self.camera_info_msg.p = [
+            319.2705186497959, 0.0, 320.0, 0.0,
+            0.0, 383.1246477530969, 240.0, 0.0,
+            0.0, 0.0, 1.0, 0.0
+        ]
+        self.camera_info_msg.binning_x = 0
+        self.camera_info_msg.binning_y = 0
+        self.camera_info_msg.roi.x_offset = 0
+        self.camera_info_msg.roi.y_offset = 0
+        self.camera_info_msg.roi.height = 0
+        self.camera_info_msg.roi.width = 0
+        self.camera_info_msg.roi.do_rectify = False
 
     def timer_callback(self):
         # Update headers

@@ -17,7 +17,6 @@
 
 from typing import Any, Dict, List
 
-from isaac_ros_examples import IsaacROSLaunchFragment
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
