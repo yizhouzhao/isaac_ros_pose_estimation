@@ -171,27 +171,17 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
             )
         
 
-
-        return [
-            drop_node,
-            resize_left_rt_detr_node,
-            pad_node,
-            image_to_tensor_node,
-            interleaved_to_planar_node,
-            reshape_node,
-            
-            
-            ComposableNode(
+        rtdetr_preprocessor = ComposableNode(
                 name='rtdetr_preprocessor',
                 package='isaac_ros_rtdetr',
                 plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
                 remappings=[
                     ('encoded_tensor', 'reshaped_tensor')
                 ]
-            ),
-
-            # RT-DETR objection detection pipeline
-            ComposableNode(
+            )
+        
+        # RT-DETR objection detection pipeline
+        rt_detr_tensor_rt = ComposableNode(
                 name='tensor_rt',
                 package='isaac_ros_tensor_rt',
                 plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
@@ -203,23 +193,25 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
                     'input_binding_names': ['images', 'orig_target_sizes'],
                     'force_engine_update': False
                 }]
-            ),
-            ComposableNode(
+            )
+        
+        rtdetr_decoder = ComposableNode(
                 name='rtdetr_decoder',
                 package='isaac_ros_rtdetr',
                 plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
-            ),
-
-            # Create a binary segmentation mask from a Detection2DArray published by RT-DETR.
+            )
+        
+        # Create a binary segmentation mask from a Detection2DArray published by RT-DETR.
             # The segmentation mask is of size
             # int(IMAGE_WIDTH/input_to_RT_DETR_ratio) x int(IMAGE_HEIGHT/input_to_RT_DETR_ratio)
-            ComposableNode(
+        detection2_d_array_filter = ComposableNode(
                 name='detection2_d_array_filter',
                 package='isaac_ros_foundationpose',
                 plugin='nvidia::isaac_ros::foundationpose::Detection2DArrayFilter',
                 remappings=[('detection2_d_array', 'detections_output')]
-            ),
-            ComposableNode(
+            )
+        
+        detection2_d_to_mask = ComposableNode(
                 name='detection2_d_to_mask',
                 package='isaac_ros_foundationpose',
                 plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
@@ -228,16 +220,16 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
                     'mask_height': int(input_height/input_to_RT_DETR_ratio)
                 }],
                 remappings=[('segmentation', 'rt_detr_segmentation')]
-            ),
-
-            # Resize segmentation mask to ESS model image size so it can be used by FoundationPose
+            )
+        
+        # Resize segmentation mask to ESS model image size so it can be used by FoundationPose
             # FoundationPose requires depth, rgb image and segmentation mask to be of the same size
             # Resize from int(IMAGE_WIDTH/input_to_RT_DETR_ratio) x
             # int(IMAGE_HEIGHT/input_to_RT_DETR_ratio)
             # to ESS_MODEL_IMAGE_WIDTH x ESS_MODEL_IMAGE_HEIGHT
             # output height constraint is used since keep_aspect_ratio is False
             # and the image is padded
-            ComposableNode(
+        resize_mask_node = ComposableNode(
                 name='resize_mask_node',
                 package='isaac_ros_image_proc',
                 plugin='nvidia::isaac_ros::image_proc::ResizeNode',
@@ -255,9 +247,9 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
                     ('resize/image', 'segmentation'),
                     ('resize/camera_info', 'camera_info_segmentation')
                 ]
-            ),
-
-            ComposableNode(
+            )
+        
+        resize_left_viz = ComposableNode(
                 name='resize_left_viz',
                 package='isaac_ros_image_proc',
                 plugin='nvidia::isaac_ros::image_proc::ResizeNode',
@@ -276,10 +268,10 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
                     ('resize/image', 'rgb/image_rect_color_viz'),
                     ('resize/camera_info', 'rgb/camera_info_viz')
                 ]
-            ),
-
-            # FoundationPose pipeline
-            ComposableNode(
+            )
+        
+        # FoundationPose pipeline
+        foundationpose_node = ComposableNode(
                 name='foundationpose_node',
                 package='isaac_ros_foundationpose',
                 plugin='nvidia::isaac_ros::foundationpose::FoundationPoseNode',
@@ -305,26 +297,25 @@ class IsaacROSFoundationPoseLaunchFragment(IsaacROSLaunchFragment):
                     ('pose_estimation/camera_info', 'rgb/camera_info'),
                     ('pose_estimation/segmentation', 'segmentation'),
                     ('pose_estimation/output', 'output')]
-            ),
-
-            ComposableNode(
-                name='detection2_d_array_filter',
-                package='isaac_ros_foundationpose',
-                plugin='nvidia::isaac_ros::foundationpose::Detection2DArrayFilter',
-                remappings=[('detection2_d_array', 'detections_output')]
-            ),
-
-            ComposableNode(
-                name='detection2_d_to_mask',
-                package='isaac_ros_foundationpose',
-                plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
-                parameters=[{
-                    'mask_width': 640,
-                    'mask_height': 480
-                }],
-                remappings=[('segmentation', 'rt_detr_segmentation')]
             )
+
+        return [
+            drop_node,
+            resize_left_rt_detr_node,
+            pad_node,
+            image_to_tensor_node,
+            interleaved_to_planar_node,
+            reshape_node,
             
+            rtdetr_preprocessor,
+            rt_detr_tensor_rt,
+            rtdetr_decoder,
+            detection2_d_array_filter,
+            detection2_d_to_mask,
+
+            resize_mask_node,
+            resize_left_viz,
+            foundationpose_node
         ]
 
     @staticmethod
