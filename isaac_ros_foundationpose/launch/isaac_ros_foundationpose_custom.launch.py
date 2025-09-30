@@ -355,12 +355,21 @@ def generate_launch_description():
 
     node_list = IsaacROSFoundationPoseLaunchFragment.get_composable_nodes()
 
-    # image_process_container = ComposableNodeContainer(
-    #     name='image_process_container',
-    #     namespace='image_process_container',
+    image_process_container = ComposableNodeContainer(
+        name='image_process_container',
+        namespace='image_process_container',
+        package='rclcpp_components',
+        executable='component_container_mt',
+        composable_node_descriptions=node_list[:11],
+        output='screen',
+    )
+
+    # rt_detr_container = ComposableNodeContainer(
+    #     name='rt_detr_container',
+    #     namespace='rt_detr_container',
     #     package='rclcpp_components',
     #     executable='component_container_mt',
-    #     composable_node_descriptions=node_list[0],
+    #     composable_node_descriptions=node_list[6:11],
     #     output='screen',
     # )
 
@@ -369,9 +378,9 @@ def generate_launch_description():
         name='foundationpose_container',
         namespace='',
         executable='component_container_mt',
-        composable_node_descriptions=node_list,
+        composable_node_descriptions=node_list[11:],
         output='screen'
     )
 
     return launch.LaunchDescription(
-        launch_args + [foundationpose_container])
+        launch_args + [image_process_container, foundationpose_container])
